@@ -162,7 +162,8 @@ private slots:
 
 private slots:
     void on_actionCursor_Puck_triggered();
-
+    void onIpcConnection();
+    void onIpcReadyRead();
     void on_actionACPI_Shutdown_triggered();
 
 private slots:
@@ -223,6 +224,8 @@ private:
     bool window_blocked = false;
 
     bool skip_exit_confirmation = false;
+
+    class QLocalServer *ipcServer = nullptr;
 };
 
 #endif // QT_MAINWINDOW_HPP

@@ -20,6 +20,9 @@
  */
 #include <QDebug>
 
+#include <QLocalServer>
+#include <QLocalSocket>
+#include <QStringList>
 #include "qt_mainwindow.hpp"
 #include "ui_qt_mainwindow.h"
 
@@ -216,6 +219,15 @@ MainWindow::MainWindow(QWidget *parent)
     extern MainWindow *main_window;
     main_window = this;
     ui->setupUi(this);
+
+    ipcServer = new QLocalServer(this);
+    QLocalServer::removeServer("/tmp/86box-ipc.sock");
+    if (ipcServer->listen("/tmp/86box-ipc.sock")) {
+        connect(ipcServer, &QLocalServer::newConnection, this, &MainWindow::onIpcConnection);
+    } else {
+        qWarning() << "Failed to start IPC socket:" << ipcServer->errorString();
+    }
+
     status->setSoundMenu(ui->menuSound);
     dynarecMenu = new QMenu(this);
     dynarecMenu->addAction(ui->actionForce_interpretation);
@@ -2801,4 +2813,51 @@ MainWindow::on_actionCGA_composite_settings_triggered()
     dialog.exec();
     isNonPause = false;
     config_save();
+}
+
+void MainWindow::onIpcConnection()
+{
+    if (!ipcServer) return;
+    QLocalSocket *clientSocket = ipcServer->nextPendingConnection();
+    connect(clientSocket, &QLocalSocket::readyRead, this, &MainWindow::onIpcReadyRead);
+    connect(clientSocket, &QLocalSocket::disconnected, clientSocket, &QLocalSocket::deleteLater);
+}
+
+void MainWindow::onIpcReadyRead()
+{
+    QLocalSocket *clientSocket = qobject_cast<QLocalSocket *>(sender());
+    if (!clientSocket) return;
+
+    while (clientSocket->canReadLine()) {
+        QString line = QString::fromUtf8(clientSocket->readLine()).trimmed();
+        QStringList parts = line.split(" ", Qt::SkipEmptyParts);
+        if (parts.isEmpty()) continue;
+
+        QString cmd = parts[0];
+        if (cmd == "cdrom_mount" && parts.size() >= 3) {
+            int id = parts[1].toInt();
+            QString path = line.section(" ", 2).trimmed();
+            if (MediaMenu::ptr) {
+                MediaMenu::ptr->cdromMount(id, path);
+                emit MediaMenu::ptr->onCdromUpdateUi(id);
+            }
+        } else if (cmd == "cdrom_eject" && parts.size() >= 2) {
+            int id = parts[1].toInt();
+            if (MediaMenu::ptr) {
+                MediaMenu::ptr->cdromEject(id);
+                emit MediaMenu::ptr->onCdromUpdateUi(id);
+            }
+        } else if (cmd == "fdd_mount" && parts.size() >= 3) {
+            int id = parts[1].toInt();
+            QString path = line.section(" ", 2).trimmed();
+            if (MediaMenu::ptr) {
+                MediaMenu::ptr->floppyMount(id, path, false);
+            }
+        } else if (cmd == "fdd_eject" && parts.size() >= 2) {
+            int id = parts[1].toInt();
+            if (MediaMenu::ptr) {
+                MediaMenu::ptr->floppyEject(id);
+            }
+        }
+    }
 }
