@@ -57,6 +57,8 @@ extern "C" {
 #include <86box/apm.h>
 #include <86box/nvr.h>
 #include <86box/acpi.h>
+#include <86box/cdrom.h>
+#include <86box/fdd.h>
 #include <86box/renderdefs.h>
 
 #ifdef USE_VNC
@@ -220,12 +222,23 @@ MainWindow::MainWindow(QWidget *parent)
     main_window = this;
     ui->setupUi(this);
 
-    ipcServer = new QLocalServer(this);
-    QLocalServer::removeServer("/tmp/86box-ipc.sock");
-    if (ipcServer->listen("/tmp/86box-ipc.sock")) {
-        connect(ipcServer, &QLocalServer::newConnection, this, &MainWindow::onIpcConnection);
+    QString sockPath;
+    if (strlen(ipc_socket_path) > 0) {
+        sockPath = QString::fromUtf8(ipc_socket_path);
+    } else if (strlen(usr_path) > 0) {
+        sockPath = QString("%1/86box-ipc.sock").arg(QString::fromUtf8(usr_path));
     } else {
-        qWarning() << "Failed to start IPC socket:" << ipcServer->errorString();
+        sockPath = "/tmp/86box-ipc.sock";
+    }
+
+    ipcSocketPath = sockPath;
+    ipcServer = new QLocalServer(this);
+    QLocalServer::removeServer(sockPath);
+    if (ipcServer->listen(sockPath)) {
+        connect(ipcServer, &QLocalServer::newConnection, this, &MainWindow::onIpcConnection);
+        qInfo() << "IPC socket listening on:" << sockPath;
+    } else {
+        qWarning() << "Failed to start IPC socket on" << sockPath << ":" << ipcServer->errorString();
     }
 
     status->setSoundMenu(ui->menuSound);
@@ -1065,6 +1078,12 @@ MainWindow::closeEvent(QCloseEvent *event)
 
     qt_nvr_save();
     cpu_thread_run = 0;
+    if (ipcServer) {
+        ipcServer->close();
+        if (!ipcSocketPath.isEmpty()) {
+            QLocalServer::removeServer(ipcSocketPath);
+        }
+    }
     event->accept();
 }
 
@@ -1277,6 +1296,12 @@ MainWindow::destroyRendererMonitorSlot(int monitor_index)
 
 MainWindow::~MainWindow()
 {
+    if (ipcServer) {
+        ipcServer->close();
+        if (!ipcSocketPath.isEmpty()) {
+            QLocalServer::removeServer(ipcSocketPath);
+        }
+    }
     delete ui;
 }
 
@@ -2833,31 +2858,117 @@ void MainWindow::onIpcReadyRead()
         QStringList parts = line.split(" ", Qt::SkipEmptyParts);
         if (parts.isEmpty()) continue;
 
-        QString cmd = parts[0];
+        QString cmd = parts[0].toLower();
+
         if (cmd == "cdrom_mount" && parts.size() >= 3) {
             int id = parts[1].toInt();
-            QString path = line.section(" ", 2).trimmed();
-            if (MediaMenu::ptr) {
-                MediaMenu::ptr->cdromMount(id, path);
-                emit MediaMenu::ptr->onCdromUpdateUi(id);
+            if (id < 0 || id >= CDROM_NUM) {
+                clientSocket->write("ERROR invalid_drive_id\n");
+            } else {
+                QString path = line.section(" ", 2).trimmed();
+                if (MediaMenu::ptr) {
+                    MediaMenu::ptr->cdromMount(id, path);
+                    emit MediaMenu::ptr->onCdromUpdateUi(id);
+                    clientSocket->write(QString("OK cdrom_mount %1\n").arg(id).toUtf8());
+                } else {
+                    clientSocket->write("ERROR media_menu_unavailable\n");
+                }
             }
         } else if (cmd == "cdrom_eject" && parts.size() >= 2) {
             int id = parts[1].toInt();
-            if (MediaMenu::ptr) {
-                MediaMenu::ptr->cdromEject(id);
-                emit MediaMenu::ptr->onCdromUpdateUi(id);
+            if (id < 0 || id >= CDROM_NUM) {
+                clientSocket->write("ERROR invalid_drive_id\n");
+            } else {
+                if (MediaMenu::ptr) {
+                    MediaMenu::ptr->cdromEject(id);
+                    emit MediaMenu::ptr->onCdromUpdateUi(id);
+                    clientSocket->write(QString("OK cdrom_eject %1\n").arg(id).toUtf8());
+                } else {
+                    clientSocket->write("ERROR media_menu_unavailable\n");
+                }
+            }
+        } else if (cmd == "cdrom_status" && parts.size() >= 2) {
+            int id = parts[1].toInt();
+            if (id < 0 || id >= CDROM_NUM) {
+                clientSocket->write("ERROR invalid_drive_id\n");
+            } else if (cdrom_is_empty(id) || strlen(cdrom[id].image_path) == 0) {
+                clientSocket->write(QString("cdrom_status %1 EMPTY\n").arg(id).toUtf8());
+            } else {
+                clientSocket->write(QString("cdrom_status %1 MOUNTED %2\n").arg(id).arg(QString::fromUtf8(cdrom[id].image_path)).toUtf8());
             }
         } else if (cmd == "fdd_mount" && parts.size() >= 3) {
             int id = parts[1].toInt();
-            QString path = line.section(" ", 2).trimmed();
-            if (MediaMenu::ptr) {
-                MediaMenu::ptr->floppyMount(id, path, false);
+            if (id < 0 || id >= FDD_NUM) {
+                clientSocket->write("ERROR invalid_drive_id\n");
+            } else {
+                bool ro = false;
+                QString path;
+                if (parts.size() >= 4 && (parts[2].toLower() == "ro" || parts[2].toLower() == "rw")) {
+                    ro = (parts[2].toLower() == "ro");
+                    path = line.section(" ", 3).trimmed();
+                } else {
+                    path = line.section(" ", 2).trimmed();
+                }
+                if (MediaMenu::ptr) {
+                    MediaMenu::ptr->floppyMount(id, path, ro);
+                    clientSocket->write(QString("OK fdd_mount %1\n").arg(id).toUtf8());
+                } else {
+                    clientSocket->write("ERROR media_menu_unavailable\n");
+                }
             }
         } else if (cmd == "fdd_eject" && parts.size() >= 2) {
             int id = parts[1].toInt();
-            if (MediaMenu::ptr) {
-                MediaMenu::ptr->floppyEject(id);
+            if (id < 0 || id >= FDD_NUM) {
+                clientSocket->write("ERROR invalid_drive_id\n");
+            } else {
+                if (MediaMenu::ptr) {
+                    MediaMenu::ptr->floppyEject(id);
+                    clientSocket->write(QString("OK fdd_eject %1\n").arg(id).toUtf8());
+                } else {
+                    clientSocket->write("ERROR media_menu_unavailable\n");
+                }
             }
+        } else if (cmd == "fdd_status" && parts.size() >= 2) {
+            int id = parts[1].toInt();
+            if (id < 0 || id >= FDD_NUM) {
+                clientSocket->write("ERROR invalid_drive_id\n");
+            } else if (strlen(floppyfns[id]) == 0) {
+                clientSocket->write(QString("fdd_status %1 EMPTY\n").arg(id).toUtf8());
+            } else {
+                QString fn = QString::fromUtf8(floppyfns[id]);
+                bool ro = (ui_writeprot[id] != 0);
+                if (fn.startsWith("wp://")) {
+                    fn = fn.mid(5);
+                    ro = true;
+                }
+                clientSocket->write(QString("fdd_status %1 MOUNTED %2 %3\n").arg(id).arg(ro ? "ro" : "rw").arg(fn).toUtf8());
+            }
+        } else if (cmd == "reset" || cmd == "cad") {
+            pc_send_cad();
+            clientSocket->write("OK reset\n");
+        } else if (cmd == "hard_reset") {
+            config_changed = 2;
+            pc_reset_hard();
+            clientSocket->write("OK hard_reset\n");
+        } else if (cmd == "pause") {
+            plat_pause(1);
+            clientSocket->write("OK pause\n");
+        } else if (cmd == "resume") {
+            plat_pause(0);
+            clientSocket->write("OK resume\n");
+        } else if (cmd == "power_off" || cmd == "exit") {
+            clientSocket->write("OK power_off\n");
+            clientSocket->flush();
+            skip_exit_confirmation = true;
+            on_actionExit_triggered();
+        } else if (cmd == "acpi_power_button" || cmd == "acpi_shutdown") {
+            acpi_pwrbut_pressed = 1;
+            clientSocket->write("OK acpi_shutdown\n");
+        } else if (cmd == "ping") {
+            clientSocket->write("PONG\n");
+        } else {
+            clientSocket->write(QString("ERROR unknown_command: %1\n").arg(cmd).toUtf8());
         }
+        clientSocket->flush();
     }
 }

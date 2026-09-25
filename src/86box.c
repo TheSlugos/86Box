@@ -356,6 +356,7 @@ char  exe_path[2048]; /* path (dir) of executable */
 char  usr_path[1024]; /* path (dir) of user data */
 char  cfg_path[1024]; /* full path of config file */
 char  global_cfg_path[1024]; /* full path of config file */
+char  ipc_socket_path[1024] = ""; /* path to custom UNIX IPC control socket */
 FILE *stdlog = NULL;  /* file to log output to */
 void (*pclog_hook)(const char *) = NULL; /* optional UI log hook */
 #if 0
@@ -783,6 +784,7 @@ pc_show_usage(void)
             "-M or --missing\t\t- dump missing machines and video cards\n"
             "-N or --noconfirm\t\t- do not ask for confirmation on quit\n"
             "-P or --vmpath path\t\t- set 'path' to be root for vm\n"
+            "--socketpath path\t\t- set UNIX domain socket path for IPC control\n"
             "-O or --global path\t\t- set 'path' to be global config file\n"
             "-R or --rompath path\t\t- set 'path' to be ROM path\n"
 #ifndef USE_SDL_UI
@@ -934,6 +936,12 @@ usage:
 
             ppath = argv[++c];
             start_vmm = 0;
+        } else if (!strcasecmp(argv[c], "--socketpath")) {
+            if ((c + 1) == argc)
+                goto usage;
+
+            strncpy(ipc_socket_path, argv[++c], sizeof(ipc_socket_path) - 1);
+            ipc_socket_path[sizeof(ipc_socket_path) - 1] = '\0';
         } else if (!strcasecmp(argv[c], "--rompath") || !strcasecmp(argv[c], "-R")) {
             if ((c + 1) == argc)
                 goto usage;

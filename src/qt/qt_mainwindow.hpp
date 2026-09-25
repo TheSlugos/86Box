@@ -226,6 +226,7 @@ private:
     bool skip_exit_confirmation = false;
 
     class QLocalServer *ipcServer = nullptr;
+    QString             ipcSocketPath;
 };
 
 #endif // QT_MAINWINDOW_HPP
