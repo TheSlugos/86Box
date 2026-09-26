@@ -21,6 +21,7 @@ jobs:
 
       - name: Install build dependencies
         run: |
+          sudo apt-get remove -y --purge 'libqt5*' 'qt5*' 'qtbase5*' || true
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential \
@@ -50,6 +51,7 @@ jobs:
         run: |
           cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
+            -DQT=ON \
             -DUSE_QT6=ON \
             -DUSE_QT6_BELOW10=ON \
             -DSDL2=ON \
@@ -58,6 +60,8 @@ jobs:
       - name: Build 86Box binary
         run: |
           ninja -C build 86Box
+          echo "=== Dynamic Library Dependencies ==="
+          ldd build/src/86Box
 
       - name: Package Release Asset
         run: |
