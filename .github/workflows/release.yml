@@ -1,0 +1,84 @@
+name: Build & Release Custom 86Box (86Web)
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Build Linux x86_64 Release
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            cmake \
+            ninja-build \
+            qt6-base-dev \
+            qt6-tools-dev \
+            qt6-tools-dev-tools \
+            qt6-l10n-tools \
+            qt6-base-private-dev \
+            libfreetype-dev \
+            libpng-dev \
+            libslirp-dev \
+            libzstd-dev \
+            libx11-dev \
+            libsdl2-dev \
+            libsndfile1-dev \
+            libopenal-dev \
+            librtmidi-dev \
+            libfluidsynth-dev \
+            libvdeplug-dev \
+            libserialport-dev \
+            libqt6opengl6-dev \
+            libvulkan-dev
+
+      - name: Configure CMake
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DUSE_QT6=ON \
+            -DUSE_QT6_BELOW10=ON \
+            -DSDL2=ON \
+            -DDEV_BRANCH=OFF
+
+      - name: Build 86Box binary
+        run: |
+          ninja -C build 86Box
+
+      - name: Package Release Asset
+        run: |
+          mkdir -p release-assets
+          tar -czf release-assets/86Box-Linux-x86_64-${{ github.ref_name }}.tar.gz -C build/src 86Box
+          ls -lh release-assets/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: 86Box ${{ github.ref_name }} (UNIX Socket IPC)
+          body: |
+            Custom 86Box build for 86web with native UNIX domain socket IPC.
+            
+            ### Included Enhancements
+            - **Per-VM Dynamic UNIX IPC Socket**: Resolves to `<vmpath>/86box-ipc.sock` (or `--socketpath`), eliminating multi-VM collisions.
+            - **Live Media Hot-Swapping**: Headless drive control for floppy and CD-ROM (`fdd_mount`, `cdrom_mount`, `fdd_eject`, `cdrom_eject`).
+            - **Floppy Write-Protection**: Supports mounting floppies as read-only (`ro`) or read-write (`rw`).
+            - **Drive Status Queries**: Inspect active media directly via socket (`fdd_status`, `cdrom_status`).
+            - **Lifecycle Control**: Reset (`reset`), hard reset (`hard_reset`), pause/resume (`pause`, `resume`), and graceful power off (`power_off`, `acpi_shutdown`).
+            - **Binary Details**: Built on Ubuntu 22.04 LTS (x86_64) with Qt 6 and SDL 2.
+          files: release-assets/*
+          draft: false
+          prerelease: false
