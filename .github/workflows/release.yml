@@ -81,6 +81,7 @@ jobs:
             - **Live Media Hot-Swapping**: Headless drive control for floppy and CD-ROM (`fdd_mount`, `cdrom_mount`, `fdd_eject`, `cdrom_eject`).
             - **Floppy Write-Protection**: Supports mounting floppies as read-only (`ro`) or read-write (`rw`).
             - **Drive Status Queries**: Inspect active media directly via socket (`fdd_status`, `cdrom_status`).
+            - **Mouse Control**: Emulated mouse input over socket (`mouse_move`, `mouse_btn`, `mouse_capture`).
             - **Lifecycle Control**: Reset (`reset`), hard reset (`hard_reset`), pause/resume (`pause`, `resume`), and graceful power off (`power_off`, `acpi_shutdown`).
             - **Binary Details**: Built on Ubuntu 22.04 LTS (x86_64) with Qt 6 and SDL 2.
           files: release-assets/*
