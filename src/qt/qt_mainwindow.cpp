@@ -2964,6 +2964,19 @@ void MainWindow::onIpcReadyRead()
         } else if (cmd == "acpi_power_button" || cmd == "acpi_shutdown") {
             acpi_pwrbut_pressed = 1;
             clientSocket->write("OK acpi_shutdown\n");
+        } else if (cmd == "mouse_move" && parts.size() >= 3) {
+            int dx = parts[1].toInt();
+            int dy = parts[2].toInt();
+            mouse_scale(dx, dy);
+            continue;
+        } else if (cmd == "mouse_btn" && parts.size() >= 2) {
+            int mask = parts[1].toInt();
+            mouse_set_buttons_ex(mask);
+            continue;
+        } else if (cmd == "mouse_capture" && parts.size() >= 2) {
+            int cap = parts[1].toInt();
+            plat_mouse_capture(cap);
+            clientSocket->write("OK mouse_capture\n");
         } else if (cmd == "ping") {
             clientSocket->write("PONG\n");
         } else {
