@@ -248,6 +248,7 @@ MainWindow::MainWindow(QWidget *parent)
     ui->actionMute_Unmute->setText(sound_muted ? tr("&Unmute") : tr("&Mute"));
     ui->stackedWidget->setMouseTracking(true);
     statusBar()->setVisible(!hide_status_bar);
+    menuBar()->setVisible(!hide_menu_bar);
 
     auto    hertz_label    = new QLabel;
     QTimer *frameRateTimer = new QTimer(this);
@@ -1754,6 +1755,15 @@ MainWindow::eventFilter(QObject *receiver, QEvent *event)
             }
         }
 
+        if ((QKeySequence) (ke->key() | (ke->modifiers() & ~Qt::KeypadModifier)) == FindAcceleratorSeq("toggle_ui_fullscreen")
+            || (QKeySequence) (ke->key() | ke->modifiers()) == FindAcceleratorSeq("toggle_ui_fullscreen")) {
+            this->keyReleaseEvent(ke);
+            keyboard_all_up();
+            toggleFullscreenUI();
+            event->accept();
+            return true;
+        }
+
         this->keyPressEvent(ke);
 
         if (event->type() == QEvent::KeyPress && video_fullscreen != 0) {
@@ -2458,10 +2468,30 @@ MainWindow::on_actionUpdate_status_bar_icons_triggered()
 }
 
 void
+MainWindow::setUIVisible(bool visible)
+{
+    fullscreen_ui_visible = visible ? 1 : 0;
+    ui->menubar->setVisible(visible);
+    ui->statusbar->setVisible(visible && !hide_status_bar);
+    ui->toolBar->setVisible(visible && !hide_tool_bar);
+    if (ui->stackedWidget)
+        ui->stackedWidget->onResize(ui->stackedWidget->width(), ui->stackedWidget->height());
+}
+
+void
+MainWindow::toggleUIVisible()
+{
+    bool visible = !ui->menubar->isVisible();
+    setUIVisible(visible);
+}
+
+void
 MainWindow::toggleFullscreenUI()
 {
-    if (video_fullscreen == 0)
+    if (video_fullscreen == 0) {
+        toggleUIVisible();
         return;
+    }
 
     fullscreen_ui_visible ^= 1;
 
@@ -2478,9 +2508,7 @@ MainWindow::toggleFullscreenUI()
         }
     }
 
-    ui->menubar->setVisible(fullscreen_ui_visible);
-    ui->statusbar->setVisible(fullscreen_ui_visible && !hide_status_bar);
-    ui->toolBar->setVisible(fullscreen_ui_visible && !hide_tool_bar);
+    setUIVisible(fullscreen_ui_visible != 0);
 }
 
 void
@@ -2977,6 +3005,15 @@ void MainWindow::onIpcReadyRead()
             int cap = parts[1].toInt();
             plat_mouse_capture(cap);
             clientSocket->write("OK mouse_capture\n");
+        } else if (cmd == "ui_toggle" || cmd == "toggle_ui") {
+            toggleUIVisible();
+            clientSocket->write(QString("OK ui_toggle %1\n").arg(ui->menubar->isVisible() ? 1 : 0).toUtf8());
+        } else if ((cmd == "ui_set" || cmd == "set_ui") && parts.size() >= 2) {
+            bool visible = (parts[1].toInt() != 0);
+            setUIVisible(visible);
+            clientSocket->write(QString("OK ui_set %1\n").arg(visible ? 1 : 0).toUtf8());
+        } else if (cmd == "ui_status") {
+            clientSocket->write(QString("OK ui_status %1\n").arg(ui->menubar->isVisible() ? 1 : 0).toUtf8());
         } else if (cmd == "ping") {
             clientSocket->write("PONG\n");
         } else {

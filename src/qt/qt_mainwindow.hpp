@@ -131,6 +131,8 @@ private slots:
     void on_actionCopy_screenshot_triggered();
     void on_actionCopy_raw_screenshot_triggered();
     void toggleFullscreenUI();
+    void setUIVisible(bool visible);
+    void toggleUIVisible();
     void on_actionMute_Unmute_triggered();
     void on_actionSound_gain_triggered();
     void on_actionPreferences_triggered();

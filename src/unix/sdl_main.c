@@ -52,6 +52,7 @@ int             update_icons;
 int             kbd_req_capture;
 int             hide_status_bar;
 int             hide_tool_bar;
+int             hide_menu_bar;
 bool            fast_forward = false;
 int             fixed_size_x = 640;
 int             fixed_size_y = 480;

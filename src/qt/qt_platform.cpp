@@ -169,6 +169,7 @@ int          update_icons    = 1;
 int          kbd_req_capture = 0;
 int          hide_status_bar = 0;
 int          hide_tool_bar   = 0;
+int          hide_menu_bar   = 0;
 
 int
 stricmp(const char *s1, const char *s2)
